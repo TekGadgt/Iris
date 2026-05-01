@@ -1,0 +1,9 @@
+{
+  "id": "iris",
+  "name": "Iris",
+  "version": "0.1.0",
+  "minAppVersion": "1.11.4",
+  "description": "Turn photos into Markdown — starting with whiteboard to-do lists.",
+  "author": "tekgadgt",
+  "isDesktopOnly": false
+}

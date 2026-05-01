@@ -1,0 +1,22 @@
+{
+  "name": "obsidian-iris",
+  "version": "0.1.0",
+  "description": "Turn photos into Markdown — starting with whiteboard to-do lists.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "lint": "npx eslint src/",
+    "test": "node --test --import tsx 'tests/**/*.test.ts'"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.21.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-obsidianmd": "^0.1.9",
+    "obsidian": "latest",
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.57.2"
+  }
+}
