@@ -71,7 +71,7 @@ export class IrisSettingTab extends PluginSettingTab {
         return secret;
       });
 
-    const defaultModel = DEFAULT_MODELS[this.plugin.settings.provider as Provider];
+    const defaultModel = DEFAULT_MODELS[this.plugin.settings.provider];
 
     new Setting(containerEl)
       .setName("Model override")

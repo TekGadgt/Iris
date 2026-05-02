@@ -1,18 +1,7 @@
 import { normalizePath, TFile, TFolder, Vault } from "obsidian";
 import type { ScanResult } from "./types";
 import { renderScanBlock } from "./render";
-
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function dateString(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-function attachmentSlug(d: Date): string {
-  return `${dateString(d)}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
-}
+import { attachmentSlug, dateString } from "./time";
 
 async function ensureFolder(vault: Vault, folderPath: string): Promise<void> {
   const normalized = normalizePath(folderPath);
@@ -56,7 +45,9 @@ export async function appendScan(
   const attachmentPath = findAvailableAttachmentPath(vault, attachmentsFolder, slug);
   await vault.createBinary(attachmentPath, imageBytes);
 
-  const linkPath = attachmentPath.substring(folder.length + 1);
+  const linkPath = attachmentPath.startsWith(`${folder}/`)
+    ? attachmentPath.slice(folder.length + 1)
+    : attachmentPath;
   const block = renderScanBlock(scan, linkPath, timestamp);
 
   const dateStr = dateString(timestamp);

@@ -1,16 +1,5 @@
 import type { ScanResult, TodoItem } from "./types";
-
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function timeString(d: Date): string {
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
-function timestampSlug(d: Date): string {
-  return `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
-}
+import { timeString, timestampSlug } from "./time";
 
 function pathKey(path: number[]): string {
   return path.join(".");
