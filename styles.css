@@ -59,3 +59,7 @@
   color: var(--text-muted);
   text-align: center;
 }
+
+.iris-hidden {
+  display: none;
+}

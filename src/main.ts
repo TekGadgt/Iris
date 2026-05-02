@@ -18,7 +18,11 @@ export default class IrisPlugin extends Plugin {
     this.addCommand({
       id: "scan-whiteboard",
       name: "Scan whiteboard",
-      callback: () => this.openScanModal(),
+      checkCallback: (checking: boolean) => {
+        if (!this.getApiKey()) return false;
+        if (!checking) this.openScanModal();
+        return true;
+      },
     });
 
     this.addRibbonIcon("scan-eye", "Scan whiteboard", () => {
@@ -89,7 +93,7 @@ export default class IrisPlugin extends Plugin {
           if (err.status === 400) {
             throw new Error("This image couldn't be read. Try a different photo.");
           }
-          throw new Error(err.message);
+          throw err;
         }
         if (err instanceof ScanValidationError) {
           new Notice(

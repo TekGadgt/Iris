@@ -57,6 +57,7 @@ function bufferToBase64(buffer: ArrayBuffer): string {
 export class ScanModal extends Modal {
   private onScan: ScanCallback;
   private currentBlob: Blob | null = null;
+  private previewUrl: string | null = null;
 
   constructor(app: App, onScan: ScanCallback) {
     super(app);
@@ -72,8 +73,16 @@ export class ScanModal extends Modal {
 
   onClose(): void {
     this.modalEl.removeEventListener("paste", this.handlePaste);
+    this.clearPreviewUrl();
     this.contentEl.empty();
     this.currentBlob = null;
+  }
+
+  private clearPreviewUrl(): void {
+    if (this.previewUrl) {
+      URL.revokeObjectURL(this.previewUrl);
+      this.previewUrl = null;
+    }
   }
 
   private handlePaste = (e: ClipboardEvent): void => {
@@ -92,6 +101,7 @@ export class ScanModal extends Modal {
   };
 
   private renderEmpty(): void {
+    this.clearPreviewUrl();
     this.contentEl.empty();
     if (Platform.isMobile) {
       this.renderMobileButtons();
@@ -110,7 +120,7 @@ export class ScanModal extends Modal {
     const takeInput = wrap.createEl("input", { type: "file" });
     takeInput.accept = "image/*";
     takeInput.setAttr("capture", "environment");
-    takeInput.style.display = "none";
+    takeInput.addClass("iris-hidden");
     takeBtn.addEventListener("click", () => takeInput.click());
     takeInput.addEventListener("change", () => {
       const file = takeInput.files?.[0];
@@ -120,7 +130,7 @@ export class ScanModal extends Modal {
     const chooseBtn = wrap.createEl("button", { text: "Choose from files" });
     const chooseInput = wrap.createEl("input", { type: "file" });
     chooseInput.accept = "image/*";
-    chooseInput.style.display = "none";
+    chooseInput.addClass("iris-hidden");
     chooseBtn.addEventListener("click", () => chooseInput.click());
     chooseInput.addEventListener("change", () => {
       const file = chooseInput.files?.[0];
@@ -133,7 +143,7 @@ export class ScanModal extends Modal {
     dz.setText("Drop image, paste, or click to choose");
     const input = dz.createEl("input", { type: "file" });
     input.accept = "image/*";
-    input.style.display = "none";
+    input.addClass("iris-hidden");
     dz.addEventListener("click", () => input.click());
     input.addEventListener("change", () => {
       const file = input.files?.[0];
@@ -164,12 +174,12 @@ export class ScanModal extends Modal {
   }
 
   private renderPreview(blob: Blob): void {
+    this.clearPreviewUrl();
     this.contentEl.empty();
     const wrap = this.contentEl.createDiv({ cls: "iris-preview" });
-    const url = URL.createObjectURL(blob);
+    this.previewUrl = URL.createObjectURL(blob);
     const img = wrap.createEl("img");
-    img.src = url;
-    img.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
+    img.src = this.previewUrl;
 
     const buttons = wrap.createDiv({ cls: "iris-modal-buttons" });
 
@@ -185,6 +195,7 @@ export class ScanModal extends Modal {
   }
 
   private renderLoading(text: string): void {
+    this.clearPreviewUrl();
     this.contentEl.empty();
     const status = this.contentEl.createDiv({ cls: "iris-status" });
     status.setText(text);
