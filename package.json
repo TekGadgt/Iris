@@ -1,6 +1,6 @@
 {
   "name": "obsidian-iris",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Turn photos into Markdown — starting with whiteboard to-do lists.",
   "main": "main.js",
   "scripts": {
