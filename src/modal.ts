@@ -1,5 +1,6 @@
 import { App, Modal, Platform } from "obsidian";
 import type { Provider } from "./types";
+import type { ProviderRequestSnapshot } from "./request";
 
 const MAX_EDGE = 1568;
 const JPEG_QUALITY = 0.85;
@@ -11,8 +12,9 @@ export interface PreparedImage {
   bytes: ArrayBuffer;    // re-encoded JPEG
 }
 
-export type ScanCallback = (image: PreparedImage) => Promise<void>;
-export type ConsentCallback = (provider: Provider) => Promise<boolean>;
+export type ScanCallback = (image: PreparedImage, request?: ProviderRequestSnapshot) => Promise<void>;
+export type ConsentCallback = (provider: Provider, request?: ProviderRequestSnapshot) => Promise<boolean>;
+export type RequestSnapshotCallback = () => ProviderRequestSnapshot | Promise<ProviderRequestSnapshot>;
 
 export class ImageConsentModal extends Modal {
   private provider: Provider;
@@ -92,12 +94,14 @@ export class ScanModal extends Modal {
   private previewUrl: string | null = null;
   private onConsent: ConsentCallback;
   private provider: Provider;
+  private resolveRequest: RequestSnapshotCallback | null;
 
-  constructor(app: App, onScan: ScanCallback, provider: Provider = "anthropic", onConsent: ConsentCallback = async () => true) {
+  constructor(app: App, onScan: ScanCallback, provider: Provider = "anthropic", onConsent: ConsentCallback = async () => true, resolveRequest: RequestSnapshotCallback | null = null) {
     super(app);
     this.onScan = onScan;
     this.provider = provider;
     this.onConsent = onConsent;
+    this.resolveRequest = resolveRequest;
   }
 
   onOpen(): void {
@@ -259,12 +263,13 @@ export class ScanModal extends Modal {
   private async runConvert(): Promise<void> {
     if (!this.currentBlob) return;
     try {
-      const consented = await this.onConsent(this.provider);
+      const request = this.resolveRequest ? await this.resolveRequest() : undefined;
+      const consented = await this.onConsent(request?.provider ?? this.provider, request);
       if (!consented) return;
       this.renderLoading("Reading whiteboard…");
       const prepared = await downscaleToJpeg(this.currentBlob);
       this.renderLoading("Saving…");
-      await this.onScan(prepared);
+      await this.onScan(prepared, request);
       this.close();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong.";

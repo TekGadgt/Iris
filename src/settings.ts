@@ -1,64 +1,14 @@
 import { App, Notice, PluginSettingTab, SecretComponent, Setting } from "obsidian";
 import type IrisPlugin from "./main";
 import type { Provider } from "./types";
+import type { IrisSettingsCore } from "./settings-core";
+import { normalizeOutputFolder, secretIdForProvider, DEFAULT_SETTINGS_CORE } from "./settings-core";
+export { normalizeSettings, normalizeOutputFolder, secretIdForProvider } from "./settings-core";
 
-const PROVIDER_LABELS: Record<Provider, string> = {
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-};
-
-export const DEFAULT_MODELS: Record<Provider, string> = {
-  anthropic: "claude-sonnet-4-6",
-  openai: "gpt-4o",
-};
-
-export interface IrisSettings {
-  provider: Provider;
-  anthropicApiKeySecretId: string;
-  openAIApiKeySecretId: string;
-  modelOverride: string;
-  outputFolder: string;
-  consentedProviders: Provider[];
-}
-
-export const DEFAULT_SETTINGS: IrisSettings = {
-  provider: "anthropic",
-  anthropicApiKeySecretId: "",
-  openAIApiKeySecretId: "",
-  modelOverride: "",
-  outputFolder: "Iris",
-  consentedProviders: [],
-};
-
-export function normalizeSettings(data: unknown): IrisSettings {
-  const saved = data && typeof data === "object" ? data as Record<string, unknown> : {};
-  const provider: Provider = saved.provider === "openai" || saved.provider === "anthropic"
-    ? saved.provider : DEFAULT_SETTINGS.provider;
-  const legacy = typeof saved.apiKeySecretId === "string" ? saved.apiKeySecretId : "";
-  const anthropicApiKeySecretId = typeof saved.anthropicApiKeySecretId === "string"
-    ? saved.anthropicApiKeySecretId : provider === "anthropic" ? legacy : "";
-  const openAIApiKeySecretId = typeof saved.openAIApiKeySecretId === "string"
-    ? saved.openAIApiKeySecretId : provider === "openai" ? legacy : "";
-  const modelOverride = typeof saved.modelOverride === "string" ? saved.modelOverride.trim() : "";
-  const outputFolder = normalizeOutputFolder(saved.outputFolder);
-  const consentedProviders = Array.isArray(saved.consentedProviders)
-    ? saved.consentedProviders.filter((p): p is Provider => p === "anthropic" || p === "openai")
-    : [];
-  return { provider, anthropicApiKeySecretId, openAIApiKeySecretId,
-    modelOverride: modelOverride || "", outputFolder: outputFolder || DEFAULT_SETTINGS.outputFolder,
-    consentedProviders: [...new Set(consentedProviders)] };
-}
-
-export function normalizeOutputFolder(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const normalized = value.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  if (!normalized || normalized.split("/").some((part) => !part || part === "." || part === ".." || new Set(["[", "]", "#", "|", "^"]).has(part))) return "";
-  return normalized;
-}
-
-export function secretIdForProvider(settings: IrisSettings, provider: Provider): string {
-  return provider === "openai" ? settings.openAIApiKeySecretId : settings.anthropicApiKeySecretId;
-}
+const PROVIDER_LABELS: Record<Provider, string> = { anthropic: "Anthropic", openai: "OpenAI" };
+export const DEFAULT_MODELS: Record<Provider, string> = { anthropic: "claude-sonnet-4-6", openai: "gpt-4o" };
+export type IrisSettings = IrisSettingsCore;
+export const DEFAULT_SETTINGS: IrisSettings = DEFAULT_SETTINGS_CORE;
 
 export class IrisSettingTab extends PluginSettingTab {
   plugin: IrisPlugin;

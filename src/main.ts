@@ -10,6 +10,7 @@ import { scanWhiteboard, ApiCallError } from "./api";
 import { ScanValidationError } from "./validate";
 import { appendScan } from "./file";
 import { ImageConsentModal, ScanModal } from "./modal";
+import type { ProviderRequestSnapshot } from "./request";
 
 export default class IrisPlugin extends Plugin {
   settings: IrisSettings = DEFAULT_SETTINGS;
@@ -56,17 +57,25 @@ export default class IrisPlugin extends Plugin {
       new Notice("Set your API key in Iris settings.");
       return;
     }
-    const modal = new ScanModal(this.app, async (image) => {
+    const resolveRequest = (): ProviderRequestSnapshot => {
+      const requestProvider = this.settings.provider;
+      const requestSecretId = secretIdForProvider(this.settings, requestProvider);
+      const requestApiKey = requestSecretId ? this.app.secretStorage.getSecret(requestSecretId) ?? "" : "";
+      if (!requestApiKey) throw new Error("Set your API key in Iris settings.");
+      return Object.freeze({
+        provider: requestProvider,
+        model: this.settings.modelOverride,
+        secretId: requestSecretId,
+        apiKey: requestApiKey,
+      });
+    };
+    const modal = new ScanModal(this.app, async (image, request) => {
       try {
-        // Resolve the complete request tuple immediately before the request.
-        const requestProvider = this.settings.provider;
-        const requestSecretId = secretIdForProvider(this.settings, requestProvider);
-        const requestApiKey = requestSecretId ? this.app.secretStorage.getSecret(requestSecretId) ?? "" : "";
-        if (!requestApiKey) throw new Error("Set your API key in Iris settings.");
+        if (!request) throw new Error("Request configuration was not captured.");
         const scan = await scanWhiteboard(
           image.base64,
           image.mediaType,
-          { provider: requestProvider, model: this.settings.modelOverride, secretId: requestSecretId, apiKey: requestApiKey }
+          request
         );
         if (
           scan.items.length === 0 &&
@@ -114,7 +123,7 @@ export default class IrisPlugin extends Plugin {
         await this.saveSettings();
       }
       return confirmed;
-    });
+    }, resolveRequest);
     modal.open();
   }
 }
