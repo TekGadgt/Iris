@@ -17,9 +17,16 @@ export type ConsentCallback = (provider: Provider) => Promise<boolean>;
 export class ImageConsentModal extends Modal {
   private provider: Provider;
   private resolveConsent: (value: boolean) => void = () => undefined;
+  private settled = false;
   constructor(app: App, provider: Provider) { super(app); this.provider = provider; }
   ask(): Promise<boolean> {
+    this.settled = false;
     return new Promise((resolve) => { this.resolveConsent = resolve; this.open(); });
+  }
+  private settle(value: boolean): void {
+    if (this.settled) return;
+    this.settled = true;
+    this.resolveConsent(value);
   }
   onOpen(): void {
     const name = this.provider === "openai" ? "OpenAI" : "Anthropic";
@@ -31,10 +38,10 @@ export class ImageConsentModal extends Modal {
     const buttons = this.contentEl.createDiv({ cls: "iris-modal-buttons" });
     const cancel = buttons.createEl("button", { text: "Cancel" });
     const send = buttons.createEl("button", { text: "Send" }); send.addClass("mod-cta");
-    cancel.addEventListener("click", () => { this.resolveConsent(false); this.close(); });
-    send.addEventListener("click", () => { this.resolveConsent(true); this.close(); });
+    cancel.addEventListener("click", () => { this.settle(false); this.close(); });
+    send.addEventListener("click", () => { this.settle(true); this.close(); });
   }
-  onClose(): void { this.contentEl.empty(); }
+  onClose(): void { this.settle(false); this.contentEl.empty(); }
 }
 
 async function downscaleToJpeg(file: File | Blob): Promise<PreparedImage> {
@@ -48,7 +55,7 @@ async function downscaleToJpeg(file: File | Blob): Promise<PreparedImage> {
     });
     const longest = Math.max(img.width, img.height);
     const scale = longest > MAX_EDGE ? MAX_EDGE / longest : 1;
-    const canvas = document.createElement("canvas");
+    const canvas = document.body.createEl("canvas");
     canvas.width = Math.round(img.width * scale);
     canvas.height = Math.round(img.height * scale);
     const ctx = canvas.getContext("2d");
@@ -101,7 +108,7 @@ export class ScanModal extends Modal {
   }
 
   onClose(): void {
-
+    this.modalEl.removeEventListener("paste", this.handlePaste);
     this.clearPreviewUrl();
     this.contentEl.empty();
     this.currentBlob = null;

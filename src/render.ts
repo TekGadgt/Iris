@@ -10,8 +10,10 @@ export function plainText(value: string, max = 500): string {
     const code = char.charCodeAt(0);
     return code >= 32 || code === 9 || code === 10;
   }).join("");
-  return cleaned.replace(/\r\n?/g, "\n")
-    .replace(/\n+/g, " ").slice(0, max).replace(/([\\`*_[\]#<>|^!~])/g, "\\$1");
+  const normalized = cleaned.replace(/\r\n?/g, "\n").replace(/\n+/g, " ").slice(0, max);
+  // Escape every Markdown-significant delimiter so model-controlled text stays
+  // text, including links, embeds, wikilinks, callouts, and code spans.
+  return normalized.replace(/([\\`*_[\]#<>|^!~(){}])/g, "\\$1").slice(0, max);
 }
 
 function renderItem(

@@ -61,6 +61,8 @@ export async function appendScan(
     return existing;
   } catch (error) {
     const attachment = vault.getAbstractFileByPath(attachmentPath);
+    // Privacy rollback: delete only the attachment created by this invocation.
+    // This intentionally bypasses trash so a failed conversion leaves no image.
     if (attachment instanceof TFile) await vault.delete(attachment);
     throw error;
   }

@@ -58,10 +58,15 @@ export default class IrisPlugin extends Plugin {
     }
     const modal = new ScanModal(this.app, async (image) => {
       try {
+        // Resolve the complete request tuple immediately before the request.
+        const requestProvider = this.settings.provider;
+        const requestSecretId = secretIdForProvider(this.settings, requestProvider);
+        const requestApiKey = requestSecretId ? this.app.secretStorage.getSecret(requestSecretId) ?? "" : "";
+        if (!requestApiKey) throw new Error("Set your API key in Iris settings.");
         const scan = await scanWhiteboard(
           image.base64,
           image.mediaType,
-          { provider, model: this.settings.modelOverride, secretId, apiKey }
+          { provider: requestProvider, model: this.settings.modelOverride, secretId: requestSecretId, apiKey: requestApiKey }
         );
         if (
           scan.items.length === 0 &&

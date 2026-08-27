@@ -46,7 +46,7 @@ function validateInferredGroup(
   path: string
 ): InferredGroup {
   if (!isObject(v)) fail(`${path}: not an object`);
-  if (!Array.isArray(v.parentPath) || v.parentPath.some((n) => typeof n !== "number" || !Number.isInteger(n) || n < 0)) {
+  if (!Array.isArray(v.parentPath) || v.parentPath.length === 0 || v.parentPath.some((n) => typeof n !== "number" || !Number.isInteger(n) || n < 0)) {
     fail(`${path}.parentPath: must contain non-negative integers`);
   }
   if (typeof v.reason !== "string") fail(`${path}.reason: not a string`);

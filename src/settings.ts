@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, SecretComponent, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, SecretComponent, Setting } from "obsidian";
 import type IrisPlugin from "./main";
 import type { Provider } from "./types";
 
@@ -62,6 +62,7 @@ export function secretIdForProvider(settings: IrisSettings, provider: Provider):
 
 export class IrisSettingTab extends PluginSettingTab {
   plugin: IrisPlugin;
+  private controlGeneration = 0;
 
   constructor(app: App, plugin: IrisPlugin) {
     super(app, plugin);
@@ -85,6 +86,7 @@ export class IrisSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.provider)
           .onChange(async (value) => {
             this.plugin.settings.provider = value as Provider;
+            this.controlGeneration++;
             await this.plugin.saveSettings();
             this.display();
           });
@@ -94,13 +96,18 @@ export class IrisSettingTab extends PluginSettingTab {
       .setName("API key")
       .setDesc("Your API key, stored securely in Obsidian's secret storage.")
       .addComponent((el) => {
+        // Capture the provider for this DOM control so delayed callbacks cannot
+        // follow a later dropdown change into another provider's secret slot.
+        const providerForControl = this.plugin.settings.provider;
+        const generationForControl = this.controlGeneration;
         const secret = new SecretComponent(this.app, el);
-        const secretId = secretIdForProvider(this.plugin.settings, this.plugin.settings.provider);
+        const secretId = secretIdForProvider(this.plugin.settings, providerForControl);
         if (secretId) {
           secret.setValue(secretId);
         }
         secret.onChange(async (secretId) => {
-          if (this.plugin.settings.provider === "openai") this.plugin.settings.openAIApiKeySecretId = secretId;
+          if (this.plugin.settings.provider !== providerForControl || this.controlGeneration !== generationForControl) return;
+          if (providerForControl === "openai") this.plugin.settings.openAIApiKeySecretId = secretId;
           else this.plugin.settings.anthropicApiKeySecretId = secretId;
           await this.plugin.saveSettings();
         });
@@ -142,7 +149,10 @@ export class IrisSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.outputFolder)
           .onChange(async (value) => {
             const normalized = normalizeOutputFolder(value);
-            if (!normalized) return;
+            if (!normalized) {
+              new Notice("Choose a valid output folder inside your vault.");
+              return;
+            }
             this.plugin.settings.outputFolder = normalized;
             await this.plugin.saveSettings();
           })
