@@ -2,11 +2,13 @@ import { normalizePath, TFile, TFolder, Vault } from "obsidian";
 import type { ScanResult } from "./types";
 import { renderScanBlock } from "./render";
 import { attachmentSlug, dateString } from "./time";
+import { normalizeOutputFolder } from "./settings";
 
 async function ensureFolder(vault: Vault, folderPath: string): Promise<void> {
   const normalized = normalizePath(folderPath);
   const existing = vault.getAbstractFileByPath(normalized);
   if (existing instanceof TFolder) return;
+  if (existing) throw new Error(`Output path ${normalized} is not a folder.`);
   await vault.createFolder(normalized);
 }
 
@@ -36,7 +38,9 @@ export async function appendScan(
   imageBytes: ArrayBuffer,
   timestamp: Date
 ): Promise<TFile> {
-  const folder = normalizePath(outputFolder);
+  const folderValue = normalizeOutputFolder(outputFolder);
+  if (!folderValue) throw new Error("Choose a valid, non-empty output folder in Iris settings.");
+  const folder = normalizePath(folderValue);
   const attachmentsFolder = normalizePath(`${folder}/attachments`);
   await ensureFolder(vault, folder);
   await ensureFolder(vault, attachmentsFolder);
@@ -44,22 +48,20 @@ export async function appendScan(
   const slug = attachmentSlug(timestamp);
   const attachmentPath = findAvailableAttachmentPath(vault, attachmentsFolder, slug);
   await vault.createBinary(attachmentPath, imageBytes);
-
-  const linkPath = attachmentPath.startsWith(`${folder}/`)
-    ? attachmentPath.slice(folder.length + 1)
-    : attachmentPath;
-  const block = renderScanBlock(scan, linkPath, timestamp);
-
-  const dateStr = dateString(timestamp);
-  const dayFilePath = normalizePath(`${folder}/${dateStr}.md`);
-  const existing = vault.getAbstractFileByPath(dayFilePath);
-
-  if (!existing) {
-    return await vault.create(dayFilePath, `${frontmatter(dateStr)}\n${block}\n`);
+  try {
+    const linkPath = attachmentPath.startsWith(`${folder}/`)
+      ? attachmentPath.slice(folder.length + 1) : attachmentPath;
+    const block = renderScanBlock(scan, linkPath, timestamp);
+    const dateStr = dateString(timestamp);
+    const dayFilePath = normalizePath(`${folder}/${dateStr}.md`);
+    const existing = vault.getAbstractFileByPath(dayFilePath);
+    if (!existing) return await vault.create(dayFilePath, `${frontmatter(dateStr)}\n${block}\n`);
+    if (!(existing instanceof TFile)) throw new Error(`Expected ${dayFilePath} to be a file.`);
+    await vault.process(existing, (data) => `${data.replace(/\n+$/, "")}\n\n---\n\n${block}\n`);
+    return existing;
+  } catch (error) {
+    const attachment = vault.getAbstractFileByPath(attachmentPath);
+    if (attachment instanceof TFile) await vault.delete(attachment);
+    throw error;
   }
-  if (!(existing instanceof TFile)) {
-    throw new Error(`Expected ${dayFilePath} to be a file.`);
-  }
-  await vault.process(existing, (data) => `${data.replace(/\n+$/, "")}\n\n---\n\n${block}\n`);
-  return existing;
 }

@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import type { IrisSettings } from "./settings";
+import type { Provider } from "./types";
 import { DEFAULT_MODELS } from "./settings";
 import type { ScanResult } from "./types";
 import { validateScanResult } from "./validate";
@@ -74,6 +75,13 @@ const SCAN_RESULT_SCHEMA = {
 };
 
 const USER_INSTRUCTION = "Convert this whiteboard photo to the structured to-do format.";
+
+export interface RequestConfig {
+  provider: Provider;
+  model: string;
+  secretId: string;
+  apiKey: string;
+}
 
 interface ApiError {
   error?: { message?: string };
@@ -214,13 +222,15 @@ async function callOpenAI(
 export async function scanWhiteboard(
   base64Image: string,
   mediaType: string,
-  settings: IrisSettings,
-  apiKey: string
+  config: RequestConfig | IrisSettings,
+  legacyApiKey?: string
 ): Promise<ScanResult> {
-  const model = settings.modelOverride || DEFAULT_MODELS[settings.provider];
-  switch (settings.provider) {
+  const provider = config.provider;
+  const model = "model" in config ? config.model || DEFAULT_MODELS[provider] : config.modelOverride || DEFAULT_MODELS[provider];
+  const apiKey = "apiKey" in config ? config.apiKey : legacyApiKey ?? "";
+  switch (provider) {
     case "openai":
-      return callOpenAI(base64Image, mediaType, model, apiKey);
+    return callOpenAI(base64Image, mediaType, model, apiKey);
     case "anthropic":
     default:
       return callAnthropic(base64Image, mediaType, model, apiKey);

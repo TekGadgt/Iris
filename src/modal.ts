@@ -1,4 +1,5 @@
 import { App, Modal, Platform } from "obsidian";
+import type { Provider } from "./types";
 
 const MAX_EDGE = 1568;
 const JPEG_QUALITY = 0.85;
@@ -11,6 +12,30 @@ export interface PreparedImage {
 }
 
 export type ScanCallback = (image: PreparedImage) => Promise<void>;
+export type ConsentCallback = (provider: Provider) => Promise<boolean>;
+
+export class ImageConsentModal extends Modal {
+  private provider: Provider;
+  private resolveConsent: (value: boolean) => void = () => undefined;
+  constructor(app: App, provider: Provider) { super(app); this.provider = provider; }
+  ask(): Promise<boolean> {
+    return new Promise((resolve) => { this.resolveConsent = resolve; this.open(); });
+  }
+  onOpen(): void {
+    const name = this.provider === "openai" ? "OpenAI" : "Anthropic";
+    this.titleEl.setText("Confirm image upload");
+    this.contentEl.createEl("p", { text: `The complete selected image will be sent to ${name} for conversion.` });
+    this.contentEl.createEl("p", { text: "Review the provider's privacy and data controls before sending." });
+    const link = this.contentEl.createEl("a", { text: "Privacy and data controls", href: this.provider === "openai" ? "https://openai.com/policies/how-your-data-is-used-to-improve-model-performance" : "https://www.anthropic.com/legal/commercial-terms" });
+    link.setAttr("target", "_blank");
+    const buttons = this.contentEl.createDiv({ cls: "iris-modal-buttons" });
+    const cancel = buttons.createEl("button", { text: "Cancel" });
+    const send = buttons.createEl("button", { text: "Send" }); send.addClass("mod-cta");
+    cancel.addEventListener("click", () => { this.resolveConsent(false); this.close(); });
+    send.addEventListener("click", () => { this.resolveConsent(true); this.close(); });
+  }
+  onClose(): void { this.contentEl.empty(); }
+}
 
 async function downscaleToJpeg(file: File | Blob): Promise<PreparedImage> {
   const url = URL.createObjectURL(file);
@@ -58,10 +83,14 @@ export class ScanModal extends Modal {
   private onScan: ScanCallback;
   private currentBlob: Blob | null = null;
   private previewUrl: string | null = null;
+  private onConsent: ConsentCallback;
+  private provider: Provider;
 
-  constructor(app: App, onScan: ScanCallback) {
+  constructor(app: App, onScan: ScanCallback, provider: Provider = "anthropic", onConsent: ConsentCallback = async () => true) {
     super(app);
     this.onScan = onScan;
+    this.provider = provider;
+    this.onConsent = onConsent;
   }
 
   onOpen(): void {
@@ -72,7 +101,7 @@ export class ScanModal extends Modal {
   }
 
   onClose(): void {
-    this.modalEl.removeEventListener("paste", this.handlePaste);
+
     this.clearPreviewUrl();
     this.contentEl.empty();
     this.currentBlob = null;
@@ -109,7 +138,7 @@ export class ScanModal extends Modal {
       this.renderDesktopDropzone();
     }
     const footer = this.contentEl.createDiv({ cls: "iris-footer" });
-    footer.setText("JPG, PNG, WebP, GIF supported");
+    footer.setText("Supported image files: jpg, png, webp, and gif");
   }
 
   private renderMobileButtons(): void {
@@ -140,11 +169,17 @@ export class ScanModal extends Modal {
 
   private renderDesktopDropzone(): void {
     const dz = this.contentEl.createDiv({ cls: "iris-dropzone" });
+    dz.setAttr("role", "button");
+    dz.setAttr("tabindex", "0");
+    dz.setAttr("aria-label", "Drop image, paste, or choose an image file");
     dz.setText("Drop image, paste, or click to choose");
     const input = dz.createEl("input", { type: "file" });
     input.accept = "image/*";
     input.addClass("iris-hidden");
     dz.addEventListener("click", () => input.click());
+    dz.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+    });
     input.addEventListener("change", () => {
       const file = input.files?.[0];
       if (file) this.acceptFile(file);
@@ -165,7 +200,7 @@ export class ScanModal extends Modal {
   private acceptFile(file: File): void {
     if (!ACCEPTED_TYPES.has(file.type)) {
       this.renderError(
-        "Iris supports JPG, PNG, WebP, GIF. HEIC and other formats need conversion first."
+        "Iris supports JPG, PNG, WebP, and GIF files. HEIC and other formats need conversion first."
       );
       return;
     }
@@ -177,6 +212,7 @@ export class ScanModal extends Modal {
     this.clearPreviewUrl();
     this.contentEl.empty();
     const wrap = this.contentEl.createDiv({ cls: "iris-preview" });
+    wrap.createEl("p", { text: `Active provider: ${this.provider}` });
     this.previewUrl = URL.createObjectURL(blob);
     const img = wrap.createEl("img");
     img.src = this.previewUrl;
@@ -216,6 +252,8 @@ export class ScanModal extends Modal {
   private async runConvert(): Promise<void> {
     if (!this.currentBlob) return;
     try {
+      const consented = await this.onConsent(this.provider);
+      if (!consented) return;
       this.renderLoading("Reading whiteboard…");
       const prepared = await downscaleToJpeg(this.currentBlob);
       this.renderLoading("Saving…");

@@ -5,6 +5,15 @@ function pathKey(path: number[]): string {
   return path.join(".");
 }
 
+export function plainText(value: string, max = 500): string {
+  const cleaned = Array.from(value).filter((char) => {
+    const code = char.charCodeAt(0);
+    return code >= 32 || code === 9 || code === 10;
+  }).join("");
+  return cleaned.replace(/\r\n?/g, "\n")
+    .replace(/\n+/g, " ").slice(0, max).replace(/([\\`*_[\]#<>|^!~])/g, "\\$1");
+}
+
 function renderItem(
   item: TodoItem,
   path: number[],
@@ -17,7 +26,7 @@ function renderItem(
   const parentKey = pathKey(path.slice(0, -1));
   const fnId = path.length > 1 ? footnoteForParent.get(parentKey) : undefined;
   const marker = fnId ? ` [^${fnId}]` : "";
-  out.push(`${indent}- ${checkbox} ${item.text}${marker}`);
+  out.push(`${indent}- ${checkbox} ${plainText(item.text)}${marker}`);
   for (let i = 0; i < item.children.length; i++) {
     renderItem(item.children[i], [...path, i], footnoteForParent, depth + 1, out);
   }
@@ -50,7 +59,7 @@ export function renderScanBlock(
 
   if (scan.inferredGroups.length > 0) {
     scan.inferredGroups.forEach((g, idx) => {
-      lines.push(`[^${slug}-${idx + 1}]: ${g.reason}`);
+      lines.push(`[^${slug}-${idx + 1}]: ${plainText(g.reason)}`);
     });
     lines.push("");
   }
@@ -58,7 +67,7 @@ export function renderScanBlock(
   if (scan.unparsed.length > 0) {
     lines.push("> [!note]- Unparsed");
     for (const u of scan.unparsed) {
-      lines.push(`> - ${u}`);
+      lines.push(`> - ${plainText(u)}`);
     }
     lines.push("");
   }

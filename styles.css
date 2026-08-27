@@ -26,6 +26,11 @@
   color: var(--text-muted);
 }
 
+.iris-dropzone:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
 .iris-dropzone.iris-dropzone-active {
   border-color: var(--interactive-accent);
   color: var(--text-normal);

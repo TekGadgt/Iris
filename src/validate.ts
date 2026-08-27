@@ -20,6 +20,7 @@ function isObject(v: unknown): v is Record<string, unknown> {
 function validateTodoItem(v: unknown, path: string): TodoItem {
   if (!isObject(v)) fail(`${path}: not an object`);
   if (typeof v.text !== "string") fail(`${path}.text: not a string`);
+  if (v.text.length > 500) fail(`${path}.text: too long`);
   if (typeof v.status !== "string" || !STATUSES.includes(v.status as TodoStatus)) {
     fail(`${path}.status: invalid status`);
   }
@@ -27,7 +28,7 @@ function validateTodoItem(v: unknown, path: string): TodoItem {
   const children = (v.children as unknown[]).map((c, i) =>
     validateTodoItem(c, `${path}.children[${i}]`)
   );
-  return { text: v.text as string, status: v.status as TodoStatus, children };
+  return { text: v.text, status: v.status as TodoStatus, children };
 }
 
 function nodeAtPath(items: TodoItem[], path: number[]): TodoItem | undefined {
@@ -45,17 +46,18 @@ function validateInferredGroup(
   path: string
 ): InferredGroup {
   if (!isObject(v)) fail(`${path}: not an object`);
-  if (!Array.isArray(v.parentPath) || v.parentPath.some((n) => typeof n !== "number")) {
-    fail(`${path}.parentPath: must be an array of numbers`);
+  if (!Array.isArray(v.parentPath) || v.parentPath.some((n) => typeof n !== "number" || !Number.isInteger(n) || n < 0)) {
+    fail(`${path}.parentPath: must contain non-negative integers`);
   }
   if (typeof v.reason !== "string") fail(`${path}.reason: not a string`);
+  if (v.reason.length > 500) fail(`${path}.reason: too long`);
   const parentPath = v.parentPath as number[];
   const node = nodeAtPath(items, parentPath);
   if (!node) fail(`${path}.parentPath: out of range`);
   if (node.children.length === 0) {
     fail(`${path}.parentPath: resolves to a node with no children`);
   }
-  return { parentPath, reason: v.reason as string };
+  return { parentPath, reason: v.reason };
 }
 
 export function validateScanResult(v: unknown): ScanResult {
@@ -63,12 +65,18 @@ export function validateScanResult(v: unknown): ScanResult {
   if (!Array.isArray(v.items)) fail("ScanResult.items: not an array");
   if (!Array.isArray(v.inferredGroups)) fail("ScanResult.inferredGroups: not an array");
   if (!Array.isArray(v.unparsed)) fail("ScanResult.unparsed: not an array");
-  if ((v.unparsed as unknown[]).some((u) => typeof u !== "string")) {
+  if ((v.unparsed as unknown[]).some((u) => typeof u !== "string" || u.length > 500)) {
     fail("ScanResult.unparsed: entries must be strings");
   }
   const items = (v.items as unknown[]).map((i, idx) => validateTodoItem(i, `items[${idx}]`));
   const inferredGroups = (v.inferredGroups as unknown[]).map((g, idx) =>
     validateInferredGroup(g, items, `inferredGroups[${idx}]`)
   );
+  const seen = new Set<string>();
+  for (const group of inferredGroups) {
+    const key = group.parentPath.join(".");
+    if (seen.has(key)) fail(`inferredGroups: duplicate parentPath ${key}`);
+    seen.add(key);
+  }
   return { items, inferredGroups, unparsed: v.unparsed as string[] };
 }

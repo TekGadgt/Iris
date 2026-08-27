@@ -11,6 +11,7 @@ An Obsidian plugin that turns photos of whiteboard to-do lists into Markdown che
 - **Photos preserved** — the original image is saved into `<output>/attachments/` and linked at the top of each scan block
 - **Anything unreadable goes to "Unparsed"** — diagrams, ambiguous text, side notes get collected into a collapsed callout instead of being silently dropped or hallucinated
 - **Multi-provider** — works with Anthropic (Claude) or OpenAI (GPT), your choice
+- **Privacy confirmation** — before each provider's first conversion, Iris explains that the complete selected image is sent to that provider and links its privacy/data controls; consent is stored separately per provider and can be reset in Settings
 
 ## Installation
 

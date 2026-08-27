@@ -14,17 +14,51 @@ export const DEFAULT_MODELS: Record<Provider, string> = {
 
 export interface IrisSettings {
   provider: Provider;
-  apiKeySecretId: string;
+  anthropicApiKeySecretId: string;
+  openAIApiKeySecretId: string;
   modelOverride: string;
   outputFolder: string;
+  consentedProviders: Provider[];
 }
 
 export const DEFAULT_SETTINGS: IrisSettings = {
   provider: "anthropic",
-  apiKeySecretId: "",
+  anthropicApiKeySecretId: "",
+  openAIApiKeySecretId: "",
   modelOverride: "",
   outputFolder: "Iris",
+  consentedProviders: [],
 };
+
+export function normalizeSettings(data: unknown): IrisSettings {
+  const saved = data && typeof data === "object" ? data as Record<string, unknown> : {};
+  const provider: Provider = saved.provider === "openai" || saved.provider === "anthropic"
+    ? saved.provider : DEFAULT_SETTINGS.provider;
+  const legacy = typeof saved.apiKeySecretId === "string" ? saved.apiKeySecretId : "";
+  const anthropicApiKeySecretId = typeof saved.anthropicApiKeySecretId === "string"
+    ? saved.anthropicApiKeySecretId : provider === "anthropic" ? legacy : "";
+  const openAIApiKeySecretId = typeof saved.openAIApiKeySecretId === "string"
+    ? saved.openAIApiKeySecretId : provider === "openai" ? legacy : "";
+  const modelOverride = typeof saved.modelOverride === "string" ? saved.modelOverride.trim() : "";
+  const outputFolder = normalizeOutputFolder(saved.outputFolder);
+  const consentedProviders = Array.isArray(saved.consentedProviders)
+    ? saved.consentedProviders.filter((p): p is Provider => p === "anthropic" || p === "openai")
+    : [];
+  return { provider, anthropicApiKeySecretId, openAIApiKeySecretId,
+    modelOverride: modelOverride || "", outputFolder: outputFolder || DEFAULT_SETTINGS.outputFolder,
+    consentedProviders: [...new Set(consentedProviders)] };
+}
+
+export function normalizeOutputFolder(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!normalized || normalized.split("/").some((part) => !part || part === "." || part === ".." || new Set(["[", "]", "#", "|", "^"]).has(part))) return "";
+  return normalized;
+}
+
+export function secretIdForProvider(settings: IrisSettings, provider: Provider): string {
+  return provider === "openai" ? settings.openAIApiKeySecretId : settings.anthropicApiKeySecretId;
+}
 
 export class IrisSettingTab extends PluginSettingTab {
   plugin: IrisPlugin;
@@ -61,11 +95,13 @@ export class IrisSettingTab extends PluginSettingTab {
       .setDesc("Your API key, stored securely in Obsidian's secret storage.")
       .addComponent((el) => {
         const secret = new SecretComponent(this.app, el);
-        if (this.plugin.settings.apiKeySecretId) {
-          secret.setValue(this.plugin.settings.apiKeySecretId);
+        const secretId = secretIdForProvider(this.plugin.settings, this.plugin.settings.provider);
+        if (secretId) {
+          secret.setValue(secretId);
         }
         secret.onChange(async (secretId) => {
-          this.plugin.settings.apiKeySecretId = secretId;
+          if (this.plugin.settings.provider === "openai") this.plugin.settings.openAIApiKeySecretId = secretId;
+          else this.plugin.settings.anthropicApiKeySecretId = secretId;
           await this.plugin.saveSettings();
         });
         return secret;
@@ -86,6 +122,15 @@ export class IrisSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl).setName("Privacy").setHeading();
+    new Setting(containerEl)
+      .setName("Image upload disclosure")
+      .setDesc("Iris sends the complete selected image to the active provider for conversion. Consent is stored separately for each provider.")
+      .addButton((button) => button.setButtonText("Reset confirmations").onClick(async () => {
+        this.plugin.settings.consentedProviders = [];
+        await this.plugin.saveSettings();
+      }));
+
     new Setting(containerEl).setName("Output").setHeading();
 
     new Setting(containerEl)
@@ -96,7 +141,9 @@ export class IrisSettingTab extends PluginSettingTab {
           .setPlaceholder("Iris")
           .setValue(this.plugin.settings.outputFolder)
           .onChange(async (value) => {
-            this.plugin.settings.outputFolder = value;
+            const normalized = normalizeOutputFolder(value);
+            if (!normalized) return;
+            this.plugin.settings.outputFolder = normalized;
             await this.plugin.saveSettings();
           })
       );

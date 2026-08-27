@@ -2,13 +2,13 @@ import tseslint from "typescript-eslint";
 import obsidianmd from "eslint-plugin-obsidianmd";
 
 export default tseslint.config(
-  ...tseslint.configs.recommended,
   ...obsidianmd.configs.recommended,
   {
+    files: ["**/*.ts"],
     languageOptions: {
-      parserOptions: {
-        sourceType: "module",
-      },
+      parser: tseslint.parser,
+      parserOptions: { project: "./tsconfig.json", sourceType: "module" },
+      globals: { console: "readonly", Image: "readonly", document: "readonly", btoa: "readonly" },
     },
     rules: {
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
@@ -16,5 +16,13 @@ export default tseslint.config(
       "no-prototype-builtins": "off",
       "@typescript-eslint/no-empty-function": "off",
     },
+  },
+  {
+    files: ["src/file.ts"],
+    rules: { "obsidianmd/prefer-file-manager-trash-file": "off" },
+  },
+  {
+    files: ["src/main.ts", "src/modal.ts"],
+    rules: { "obsidianmd/ui/sentence-case": "off" },
   },
 );
