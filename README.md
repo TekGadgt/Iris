@@ -42,7 +42,7 @@ gh release download 1.0.1 \
   --dir <vault>/.obsidian/plugins/iris/
 ```
 
-Replace `<vault>` with the path to your Obsidian vault. After downloading, enable the plugin in Settings > Community plugins.
+Replace `<vault>` with the path to your Obsidian vault, then enable Iris in **Settings → Community plugins**.
 
 ## Setup
 
