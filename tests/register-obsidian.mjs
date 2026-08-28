@@ -42,8 +42,16 @@ export { Element };
 fs.writeFileSync(entry, source);
 const pkg = JSON.parse(fs.readFileSync(packageFile,"utf8"));
 pkg.main="index.js";
+pkg.type="module";
 fs.writeFileSync(packageFile, JSON.stringify(pkg));
-globalThis.document={body:new (await import(entry+"?x="+Date.now())).Element("body")};
+const obsidian = await import("obsidian");
+const requiredConstructors = ["Element", "Modal", "PluginSettingTab", "SecretComponent", "Setting"];
+for (const name of requiredConstructors) {
+  if (typeof obsidian[name] !== "function") {
+    throw new TypeError(`Obsidian test shim export ${name} must be a constructor`);
+  }
+}
+globalThis.document={body:new obsidian.Element("body")};
 globalThis.Image=class { width=2; height=2; set src(_){queueMicrotask(()=>this.onload?.())} };
 globalThis.btoa=(value)=>Buffer.from(value,"binary").toString("base64");
 // The test-only module above is generated in node_modules at test startup.
