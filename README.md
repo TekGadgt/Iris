@@ -11,10 +11,18 @@ An Obsidian plugin that turns photos of whiteboard to-do lists into Markdown che
 - **Photos preserved** — the original image is saved into `<output>/attachments/` and linked at the top of each scan block
 - **Anything unreadable goes to "Unparsed"** — diagrams, ambiguous text, side notes get collected into a collapsed callout instead of being silently dropped or hallucinated
 - **Multi-provider** — works with Anthropic (Claude) or OpenAI (GPT), your choice
+- **Privacy confirmation** — before each provider's first conversion, Iris explains that the complete selected image is sent to that provider and links its privacy/data controls; consent is stored separately per provider and can be reset in Settings
 
-## Installation
+### From the Obsidian community marketplace
 
-Until Iris is available in the Obsidian community marketplace, install it manually using the [GitHub CLI](https://cli.github.com/):
+1. Open **Settings** in Obsidian.
+2. Select **Community plugins**.
+3. Select **Browse** and search for **Iris**.
+4. Select **Install**, then **Enable** the plugin.
+
+### Manual installation (fallback)
+
+If you cannot use the marketplace, install the latest release manually with the [GitHub CLI](https://cli.github.com/):
 
 ```sh
 # Latest release
@@ -26,7 +34,7 @@ gh release download \
   --dir <vault>/.obsidian/plugins/iris/
 
 # Specific version
-gh release download 1.0.0 \
+gh release download 1.0.1 \
   --repo TekGadgt/Iris \
   --pattern "main.js" \
   --pattern "manifest.json" \
@@ -34,7 +42,7 @@ gh release download 1.0.0 \
   --dir <vault>/.obsidian/plugins/iris/
 ```
 
-Replace `<vault>` with the path to your Obsidian vault. After downloading, enable the plugin in Settings > Community plugins.
+Replace `<vault>` with the path to your Obsidian vault, then enable Iris in **Settings → Community plugins**.
 
 ## Setup
 

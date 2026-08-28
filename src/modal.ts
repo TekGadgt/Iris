@@ -1,4 +1,7 @@
 import { App, Modal, Platform } from "obsidian";
+import type { Provider } from "./types";
+import type { ProviderRequestSnapshot } from "./request";
+import { providerDisplayName } from "./provider-label";
 
 const MAX_EDGE = 1568;
 const JPEG_QUALITY = 0.85;
@@ -10,7 +13,39 @@ export interface PreparedImage {
   bytes: ArrayBuffer;    // re-encoded JPEG
 }
 
-export type ScanCallback = (image: PreparedImage) => Promise<void>;
+export type ScanCallback = (image: PreparedImage, request?: ProviderRequestSnapshot) => Promise<void>;
+export type ConsentCallback = (provider: Provider, request?: ProviderRequestSnapshot) => Promise<boolean>;
+export type RequestSnapshotCallback = () => ProviderRequestSnapshot | Promise<ProviderRequestSnapshot>;
+
+export class ImageConsentModal extends Modal {
+  private provider: Provider;
+  private resolveConsent: (value: boolean) => void = () => undefined;
+  private settled = false;
+  constructor(app: App, provider: Provider) { super(app); this.provider = provider; }
+  ask(): Promise<boolean> {
+    this.settled = false;
+    return new Promise((resolve) => { this.resolveConsent = resolve; this.open(); });
+  }
+  private settle(value: boolean): void {
+    if (this.settled) return;
+    this.settled = true;
+    this.resolveConsent(value);
+  }
+  onOpen(): void {
+    const name = this.provider === "openai" ? "OpenAI" : "Anthropic";
+    this.titleEl.setText("Confirm image upload");
+    this.contentEl.createEl("p", { text: `The complete selected image will be sent to ${name} for conversion.` });
+    this.contentEl.createEl("p", { text: "Review the provider's privacy and data controls before sending." });
+    const link = this.contentEl.createEl("a", { text: "Privacy and data controls", href: this.provider === "openai" ? "https://openai.com/policies/how-your-data-is-used-to-improve-model-performance" : "https://www.anthropic.com/legal/commercial-terms" });
+    link.setAttr("target", "_blank");
+    const buttons = this.contentEl.createDiv({ cls: "iris-modal-buttons" });
+    const cancel = buttons.createEl("button", { text: "Cancel" });
+    const send = buttons.createEl("button", { text: "Send" }); send.addClass("mod-cta");
+    cancel.addEventListener("click", () => { this.settle(false); this.close(); });
+    send.addEventListener("click", () => { this.settle(true); this.close(); });
+  }
+  onClose(): void { this.settle(false); this.contentEl.empty(); }
+}
 
 async function downscaleToJpeg(file: File | Blob): Promise<PreparedImage> {
   const url = URL.createObjectURL(file);
@@ -23,7 +58,7 @@ async function downscaleToJpeg(file: File | Blob): Promise<PreparedImage> {
     });
     const longest = Math.max(img.width, img.height);
     const scale = longest > MAX_EDGE ? MAX_EDGE / longest : 1;
-    const canvas = document.createElement("canvas");
+    const canvas = document.body.createEl("canvas");
     canvas.width = Math.round(img.width * scale);
     canvas.height = Math.round(img.height * scale);
     const ctx = canvas.getContext("2d");
@@ -58,10 +93,16 @@ export class ScanModal extends Modal {
   private onScan: ScanCallback;
   private currentBlob: Blob | null = null;
   private previewUrl: string | null = null;
+  private onConsent: ConsentCallback;
+  private provider: Provider;
+  private resolveRequest: RequestSnapshotCallback | null;
 
-  constructor(app: App, onScan: ScanCallback) {
+  constructor(app: App, onScan: ScanCallback, provider: Provider = "anthropic", onConsent: ConsentCallback = async () => true, resolveRequest: RequestSnapshotCallback | null = null) {
     super(app);
     this.onScan = onScan;
+    this.provider = provider;
+    this.onConsent = onConsent;
+    this.resolveRequest = resolveRequest;
   }
 
   onOpen(): void {
@@ -109,7 +150,7 @@ export class ScanModal extends Modal {
       this.renderDesktopDropzone();
     }
     const footer = this.contentEl.createDiv({ cls: "iris-footer" });
-    footer.setText("JPG, PNG, WebP, GIF supported");
+    footer.setText("Supported image files: jpg, png, webp, and gif");
   }
 
   private renderMobileButtons(): void {
@@ -140,11 +181,17 @@ export class ScanModal extends Modal {
 
   private renderDesktopDropzone(): void {
     const dz = this.contentEl.createDiv({ cls: "iris-dropzone" });
+    dz.setAttr("role", "button");
+    dz.setAttr("tabindex", "0");
+    dz.setAttr("aria-label", "Drop image, paste, or choose an image file");
     dz.setText("Drop image, paste, or click to choose");
     const input = dz.createEl("input", { type: "file" });
     input.accept = "image/*";
     input.addClass("iris-hidden");
     dz.addEventListener("click", () => input.click());
+    dz.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+    });
     input.addEventListener("change", () => {
       const file = input.files?.[0];
       if (file) this.acceptFile(file);
@@ -165,7 +212,7 @@ export class ScanModal extends Modal {
   private acceptFile(file: File): void {
     if (!ACCEPTED_TYPES.has(file.type)) {
       this.renderError(
-        "Iris supports JPG, PNG, WebP, GIF. HEIC and other formats need conversion first."
+        "Iris supports JPG, PNG, WebP, and GIF files. HEIC and other formats need conversion first."
       );
       return;
     }
@@ -173,10 +220,11 @@ export class ScanModal extends Modal {
     this.renderPreview(file);
   }
 
-  private renderPreview(blob: Blob): void {
+  private renderPreview(blob: Blob, provider: Provider = this.provider): void {
     this.clearPreviewUrl();
     this.contentEl.empty();
     const wrap = this.contentEl.createDiv({ cls: "iris-preview" });
+    wrap.createEl("p", { text: `Recipient provider: ${providerDisplayName(provider)}` });
     this.previewUrl = URL.createObjectURL(blob);
     const img = wrap.createEl("img");
     img.src = this.previewUrl;
@@ -216,10 +264,20 @@ export class ScanModal extends Modal {
   private async runConvert(): Promise<void> {
     if (!this.currentBlob) return;
     try {
+      const request = this.resolveRequest ? await this.resolveRequest() : undefined;
+      // The settings provider may have changed while this modal was open.
+      // Refresh the visible recipient from the same snapshot used for consent
+      // and dispatch before any image bytes leave the vault.
+      if (request) {
+        this.provider = request.provider;
+        this.renderPreview(this.currentBlob, request.provider);
+      }
+      const consented = await this.onConsent(request?.provider ?? this.provider, request);
+      if (!consented) return;
       this.renderLoading("Reading whiteboard…");
       const prepared = await downscaleToJpeg(this.currentBlob);
       this.renderLoading("Saving…");
-      await this.onScan(prepared);
+      await this.onScan(prepared, request);
       this.close();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong.";
