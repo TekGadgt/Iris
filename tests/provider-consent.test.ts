@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dispatchWithConsent, type ProviderRequestSnapshot } from "../src/request";
+import { providerDisplayName } from "../src/provider-label";
 
 test("consent and dispatch use the same immutable provider request snapshot", async () => {
   const consented: string[] = [];
@@ -28,6 +29,12 @@ test("consent and dispatch use the same immutable provider request snapshot", as
   assert.equal(dispatched[0].apiKey, "anthropic-key");
   assert.deepEqual(result, dispatched[0]);
 });
+
+test("recipient display names the provider selected by the Convert snapshot", () => {
+  assert.equal(providerDisplayName("anthropic"), "Anthropic");
+  assert.equal(providerDisplayName("openai"), "OpenAI");
+});
+
 test("consent cancellation does not dispatch and a later retry can proceed", async () => {
   const snapshots: ProviderRequestSnapshot[] = [];
   let attempts = 0;

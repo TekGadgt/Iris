@@ -1,6 +1,7 @@
 import { App, Modal, Platform } from "obsidian";
 import type { Provider } from "./types";
 import type { ProviderRequestSnapshot } from "./request";
+import { providerDisplayName } from "./provider-label";
 
 const MAX_EDGE = 1568;
 const JPEG_QUALITY = 0.85;
@@ -219,11 +220,11 @@ export class ScanModal extends Modal {
     this.renderPreview(file);
   }
 
-  private renderPreview(blob: Blob): void {
+  private renderPreview(blob: Blob, provider: Provider = this.provider): void {
     this.clearPreviewUrl();
     this.contentEl.empty();
     const wrap = this.contentEl.createDiv({ cls: "iris-preview" });
-    wrap.createEl("p", { text: `Active provider: ${this.provider}` });
+    wrap.createEl("p", { text: `Recipient provider: ${providerDisplayName(provider)}` });
     this.previewUrl = URL.createObjectURL(blob);
     const img = wrap.createEl("img");
     img.src = this.previewUrl;
@@ -264,6 +265,13 @@ export class ScanModal extends Modal {
     if (!this.currentBlob) return;
     try {
       const request = this.resolveRequest ? await this.resolveRequest() : undefined;
+      // The settings provider may have changed while this modal was open.
+      // Refresh the visible recipient from the same snapshot used for consent
+      // and dispatch before any image bytes leave the vault.
+      if (request) {
+        this.provider = request.provider;
+        this.renderPreview(this.currentBlob, request.provider);
+      }
       const consented = await this.onConsent(request?.provider ?? this.provider, request);
       if (!consented) return;
       this.renderLoading("Reading whiteboard…");
