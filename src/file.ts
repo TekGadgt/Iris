@@ -1,4 +1,4 @@
-import { normalizePath, TFile, TFolder, Vault } from "obsidian";
+import { normalizePath, TFile, TFolder, Vault, type FileManager } from "obsidian";
 import type { ScanResult } from "./types";
 import { renderScanBlock } from "./render";
 import { attachmentSlug, dateString } from "./time";
@@ -33,6 +33,7 @@ function frontmatter(date: string): string {
 
 export async function appendScan(
   vault: Vault,
+  fileManager: FileManager,
   outputFolder: string,
   scan: ScanResult,
   imageBytes: ArrayBuffer,
@@ -61,9 +62,9 @@ export async function appendScan(
     return existing;
   } catch (error) {
     const attachment = vault.getAbstractFileByPath(attachmentPath);
-    // Privacy rollback: delete only the attachment created by this invocation.
-    // This intentionally bypasses trash so a failed conversion leaves no image.
-    if (attachment instanceof TFile) await vault.delete(attachment);
+    // Roll back only the attachment created by this invocation while honoring
+    // the user's configured file deletion preference.
+    if (attachment instanceof TFile) await fileManager.trashFile(attachment);
     throw error;
   }
 }
