@@ -87,6 +87,7 @@ export default class IrisPlugin extends Plugin {
         }
         const file = await appendScan(
           this.app.vault,
+          this.app.fileManager,
           this.settings.outputFolder,
           scan,
           image.bytes,

@@ -91,6 +91,16 @@ test("shipped settings API-key callback cannot write another provider slot after
   assert.equal(saves.length, 0);
 });
 
+test("shipped settings expose searchable definitions for Obsidian 1.13", () => {
+  const plugin: any = { settings: { provider: "anthropic", anthropicApiKeySecretId: "", openAIApiKeySecretId: "", modelOverride: "", outputFolder: "Iris", consentedProviders: [] }, saveSettings: async () => undefined };
+  const tab = new IrisSettingTab(app, plugin);
+  const groups = tab.getSettingDefinitions() as any[];
+  assert.deepEqual(groups.map((group) => group.heading), ["API", "Privacy", "Output"]);
+  const settings = groups.flatMap((group) => group.items);
+  assert.deepEqual(settings.map((setting) => setting.name), ["Provider", "API key", "Model override", "Image upload disclosure", "Output folder"]);
+  assert.ok(settings.every((setting) => typeof setting.render === "function"));
+});
+
 const scan: ScanResult = { items: [], inferredGroups: [], unparsed: ["recognized"] };
 const timestamp = new Date(2026, 7, 28, 12, 34, 56);
 
@@ -99,7 +109,6 @@ class TestVault {
   contents = new Map<string, string>();
   createFailures = 0;
   processFailures = 0;
-  deleteFailures = 0;
   deleted: string[] = [];
   getAbstractFileByPath(path: string) { return this.files.get(path); }
   async createFolder(path: string) { this.files.set(path, new (Obsidian as any).TFolder(path)); }
@@ -115,10 +124,26 @@ class TestVault {
     this.contents.set(file.path, fn(this.contents.get(file.path) ?? ""));
     return file;
   }
-  async delete(file: any) {
+}
+
+class TestFileManager {
+  deleteFailures = 0;
+  constructor(private vault: TestVault) {}
+  async trashFile(file: any) {
     if (this.deleteFailures) throw new Error("rollback delete failed");
-    this.deleted.push(file.path); this.files.delete(file.path);
+    this.vault.deleted.push(file.path);
+    this.vault.files.delete(file.path);
   }
+}
+
+function fileManagerFor(vault: TestVault): TestFileManager {
+  return new TestFileManager(vault);
+}
+
+function failingFileManagerFor(vault: TestVault): TestFileManager {
+  const fileManager = fileManagerFor(vault);
+  fileManager.deleteFailures = 1;
+  return fileManager;
 }
 
 function seededVault() {
@@ -130,28 +155,28 @@ function seededVault() {
 
 test("shipped appendScan rolls back only its new attachment when note creation fails", async () => {
   const vault = new TestVault(); vault.createFailures = 1;
-  await assert.rejects(() => appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp), /note create failed/);
+  await assert.rejects(() => appendScan(vault as any, fileManagerFor(vault) as any, "Iris", scan, new ArrayBuffer(1), timestamp), /note create failed/);
   assert.deepEqual(vault.deleted, ["Iris/attachments/2026-08-28-123456.jpg"]);
 });
 
 test("shipped appendScan rolls back only its new attachment when note processing fails", async () => {
   const vault = new TestVault(); vault.processFailures = 1;
   vault.files.set("Iris/2026-08-28.md", new (Obsidian as any).TFile("Iris/2026-08-28.md"));
-  await assert.rejects(() => appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp), /note process failed/);
+  await assert.rejects(() => appendScan(vault as any, fileManagerFor(vault) as any, "Iris", scan, new ArrayBuffer(1), timestamp), /note process failed/);
   assert.deepEqual(vault.deleted, ["Iris/attachments/2026-08-28-123456.jpg"]);
 });
 
 test("shipped appendScan preserves pre-existing collisions while removing its suffixed attachment", async () => {
   const vault = seededVault(); vault.createFailures = 1;
-  await assert.rejects(() => appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp), /note create failed/);
+  await assert.rejects(() => appendScan(vault as any, fileManagerFor(vault) as any, "Iris", scan, new ArrayBuffer(1), timestamp), /note create failed/);
   assert.deepEqual(vault.deleted, ["Iris/attachments/2026-08-28-123456-3.jpg"]);
   assert.ok(vault.files.has("Iris/attachments/2026-08-28-123456.jpg"));
   assert.ok(vault.files.has("Iris/attachments/2026-08-28-123456-2.jpg"));
 });
 
 test("shipped appendScan reports rollback deletion failure without deleting unrelated files", async () => {
-  const vault = seededVault(); vault.createFailures = 1; vault.deleteFailures = 1;
-  await assert.rejects(() => appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp), /rollback delete failed/);
+  const vault = seededVault(); vault.createFailures = 1;
+  await assert.rejects(() => appendScan(vault as any, failingFileManagerFor(vault) as any, "Iris", scan, new ArrayBuffer(1), timestamp), /rollback delete failed/);
   assert.deepEqual(vault.deleted, []);
   assert.ok(vault.files.has("Iris/attachments/2026-08-28-123456.jpg"));
   assert.ok(vault.files.has("Iris/attachments/2026-08-28-123456-2.jpg"));
@@ -159,7 +184,7 @@ test("shipped appendScan reports rollback deletion failure without deleting unre
 
 test("shipped appendScan creates a note, attachment, collision suffix, and output folders on success", async () => {
   const vault = seededVault();
-  const file = await appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp);
+  const file = await appendScan(vault as any, fileManagerFor(vault) as any, "Iris", scan, new ArrayBuffer(1), timestamp);
   assert.equal(file.path, "Iris/2026-08-28.md");
   assert.ok(vault.files.has("Iris/attachments/2026-08-28-123456-3.jpg"));
   assert.ok(vault.files.has("Iris"));
@@ -171,7 +196,7 @@ test("shipped appendScan creates a note, attachment, collision suffix, and outpu
 test("shipped appendScan rejects an output path that is a file before creating attachments", async () => {
   const vault = new TestVault();
   vault.files.set("Iris", new (Obsidian as any).TFile("Iris"));
-  await assert.rejects(() => appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp), /is not a folder/);
+  await assert.rejects(() => appendScan(vault as any, fileManagerFor(vault) as any, "Iris", scan, new ArrayBuffer(1), timestamp), /is not a folder/);
   assert.deepEqual(vault.deleted, []);
   assert.equal(vault.files.size, 1);
 });
