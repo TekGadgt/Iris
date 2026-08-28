@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ImageConsentModal, ScanModal } from "../src/modal";
 import { IrisSettingTab } from "../src/settings";
+import { appendScan } from "../src/file";
+import type { ScanResult } from "../src/types";
 import { scanWhiteboard } from "../src/api";
 import type { ProviderRequestSnapshot } from "../src/request";
 import * as Obsidian from "obsidian";
@@ -87,4 +89,99 @@ test("shipped settings API-key callback cannot write another provider slot after
   assert.equal(plugin.settings.anthropicApiKeySecretId, "a");
   assert.equal(plugin.settings.openAIApiKeySecretId, "o");
   assert.equal(saves.length, 0);
+});
+
+const scan: ScanResult = { items: [], inferredGroups: [], unparsed: ["recognized"] };
+const timestamp = new Date(2026, 7, 28, 12, 34, 56);
+
+class TestVault {
+  files = new Map<string, any>();
+  contents = new Map<string, string>();
+  createFailures = 0;
+  processFailures = 0;
+  deleteFailures = 0;
+  deleted: string[] = [];
+  getAbstractFileByPath(path: string) { return this.files.get(path); }
+  async createFolder(path: string) { this.files.set(path, new (Obsidian as any).TFolder(path)); }
+  async createBinary(path: string, _bytes: ArrayBuffer) {
+    this.files.set(path, new (Obsidian as any).TFile(path));
+  }
+  async create(path: string, data: string) {
+    if (this.createFailures) throw new Error("note create failed");
+    const file = new (Obsidian as any).TFile(path); this.files.set(path, file); this.contents.set(path, data); return file;
+  }
+  async process(file: any, fn: (data: string) => string) {
+    if (this.processFailures) throw new Error("note process failed");
+    this.contents.set(file.path, fn(this.contents.get(file.path) ?? ""));
+    return file;
+  }
+  async delete(file: any) {
+    if (this.deleteFailures) throw new Error("rollback delete failed");
+    this.deleted.push(file.path); this.files.delete(file.path);
+  }
+}
+
+function seededVault() {
+  const vault = new TestVault();
+  vault.files.set("Iris/attachments/2026-08-28-123456.jpg", new (Obsidian as any).TFile("Iris/attachments/2026-08-28-123456.jpg"));
+  vault.files.set("Iris/attachments/2026-08-28-123456-2.jpg", new (Obsidian as any).TFile("Iris/attachments/2026-08-28-123456-2.jpg"));
+  return vault;
+}
+
+test("shipped appendScan rolls back only its new attachment when note creation fails", async () => {
+  const vault = new TestVault(); vault.createFailures = 1;
+  await assert.rejects(() => appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp), /note create failed/);
+  assert.deepEqual(vault.deleted, ["Iris/attachments/2026-08-28-123456.jpg"]);
+});
+
+test("shipped appendScan rolls back only its new attachment when note processing fails", async () => {
+  const vault = new TestVault(); vault.processFailures = 1;
+  vault.files.set("Iris/2026-08-28.md", new (Obsidian as any).TFile("Iris/2026-08-28.md"));
+  await assert.rejects(() => appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp), /note process failed/);
+  assert.deepEqual(vault.deleted, ["Iris/attachments/2026-08-28-123456.jpg"]);
+});
+
+test("shipped appendScan preserves pre-existing collisions while removing its suffixed attachment", async () => {
+  const vault = seededVault(); vault.createFailures = 1;
+  await assert.rejects(() => appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp), /note create failed/);
+  assert.deepEqual(vault.deleted, ["Iris/attachments/2026-08-28-123456-3.jpg"]);
+  assert.ok(vault.files.has("Iris/attachments/2026-08-28-123456.jpg"));
+  assert.ok(vault.files.has("Iris/attachments/2026-08-28-123456-2.jpg"));
+});
+
+test("shipped appendScan reports rollback deletion failure without deleting unrelated files", async () => {
+  const vault = seededVault(); vault.createFailures = 1; vault.deleteFailures = 1;
+  await assert.rejects(() => appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp), /rollback delete failed/);
+  assert.deepEqual(vault.deleted, []);
+  assert.ok(vault.files.has("Iris/attachments/2026-08-28-123456.jpg"));
+  assert.ok(vault.files.has("Iris/attachments/2026-08-28-123456-2.jpg"));
+});
+
+test("shipped appendScan creates a note, attachment, collision suffix, and output folders on success", async () => {
+  const vault = seededVault();
+  const file = await appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp);
+  assert.equal(file.path, "Iris/2026-08-28.md");
+  assert.ok(vault.files.has("Iris/attachments/2026-08-28-123456-3.jpg"));
+  assert.ok(vault.files.has("Iris"));
+  assert.ok(vault.files.has("Iris/attachments"));
+  assert.match(vault.contents.get("Iris/2026-08-28.md") ?? "", /\[whiteboard scan\]\(attachments\/2026-08-28-123456-3\.jpg\)/);
+  assert.match(vault.contents.get("Iris/2026-08-28.md") ?? "", /> \[!note\]- Unparsed/);
+});
+
+test("shipped appendScan rejects an output path that is a file before creating attachments", async () => {
+  const vault = new TestVault();
+  vault.files.set("Iris", new (Obsidian as any).TFile("Iris"));
+  await assert.rejects(() => appendScan(vault as any, "Iris", scan, new ArrayBuffer(1), timestamp), /is not a folder/);
+  assert.deepEqual(vault.deleted, []);
+  assert.equal(vault.files.size, 1);
+});
+
+test("shipped settings output callback preserves prior state and notices empty, invalid, and non-string values", async () => {
+  const notices = (Obsidian as any).Notice.messages as string[];
+  const plugin: any = { settings: { provider: "anthropic", anthropicApiKeySecretId: "", openAIApiKeySecretId: "", modelOverride: "", outputFolder: "Existing", consentedProviders: [] }, saveSettings: async () => { throw new Error("must not save invalid output"); } };
+  const tab = new IrisSettingTab(app, plugin); tab.display();
+  const output = (Obsidian as any).Setting.instances.at(-1).text;
+  for (const value of ["", "../outside", null]) { await output.change(value); assert.equal(plugin.settings.outputFolder, "Existing"); }
+  assert.equal(notices.slice(-3).length, 3);
+  assert.ok(notices.slice(-3).every((message) => /valid output folder/i.test(message)));
 });

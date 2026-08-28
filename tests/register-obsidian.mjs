@@ -22,6 +22,9 @@ class Element {
   querySelectorAll(tag) { const out=[]; const walk=e=>{ for(const c of e.children) { if(c.tagName===tag.toUpperCase()) out.push(c); walk(c); } }; walk(this); return out; }
 }
 export class Modal { constructor(app){this.app=app;this.modalEl=new Element("div");this.titleEl=new Element("h2");this.contentEl=new Element("div");this.modalEl.appendChild(this.titleEl);this.modalEl.appendChild(this.contentEl);} open(){this.onOpen?.();} close(){this.onClose?.();} }
+export class TFile { constructor(path){this.path=path;} }
+export class TFolder { constructor(path){this.path=path;} }
+export const normalizePath=(value)=>value.split("\\").join("/").replace(/^\/+|\/+$/g,"");
 export class App {}
 export class Platform { static isMobile=false; }
 export class Notice { constructor(message){Notice.messages.push(message);} static messages=[]; }
