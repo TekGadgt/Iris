@@ -13,9 +13,16 @@ An Obsidian plugin that turns photos of whiteboard to-do lists into Markdown che
 - **Multi-provider** — works with Anthropic (Claude) or OpenAI (GPT), your choice
 - **Privacy confirmation** — before each provider's first conversion, Iris explains that the complete selected image is sent to that provider and links its privacy/data controls; consent is stored separately per provider and can be reset in Settings
 
-## Installation
+### From the Obsidian community marketplace
 
-Until Iris is available in the Obsidian community marketplace, install it manually using the [GitHub CLI](https://cli.github.com/):
+1. Open **Settings** in Obsidian.
+2. Select **Community plugins**.
+3. Select **Browse** and search for **Iris**.
+4. Select **Install**, then **Enable** the plugin.
+
+### Manual installation (fallback)
+
+If you cannot use the marketplace, install the latest release manually with the [GitHub CLI](https://cli.github.com/):
 
 ```sh
 # Latest release
@@ -27,7 +34,7 @@ gh release download \
   --dir <vault>/.obsidian/plugins/iris/
 
 # Specific version
-gh release download 1.0.0 \
+gh release download 1.0.1 \
   --repo TekGadgt/Iris \
   --pattern "main.js" \
   --pattern "manifest.json" \
